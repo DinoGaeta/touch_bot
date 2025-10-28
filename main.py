@@ -1,4 +1,8 @@
+from flask import Flask
+import threading
 import os, requests, feedparser, random, time, json, datetime
+
+app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v9g")
 CHAT_ID = os.getenv("5205240046")
@@ -61,8 +65,18 @@ def main():
     send_message(f"✅ Inviate {count} notizie italiane.\n✨ Prompt del Giorno:\n{random.choice(PROMPTS)}")
     log("✅ Routine completata.")
 
-if __name__ == "__main__":
+# thread per il bot
+def background_loop():
     while True:
         main()
         log("💤 Attesa 24h...")
         time.sleep(86400)
+
+@app.route('/')
+def home():
+    return "TouchBot è attivo 🚀"
+
+if __name__ == "__main__":
+    threading.Thread(target=background_loop).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
