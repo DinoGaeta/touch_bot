@@ -1,82 +1,92 @@
 from flask import Flask
 import threading
-import os, requests, feedparser, random, time, json, datetime
+import os, requests, feedparser, random, time, json
+from datetime import datetime
+
+# --- CONFIGURAZIONE ---
+BOT_TOKEN = "8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v9g"
+CHAT_ID = "5205240046"
+
+# --- RUBRICHE E FEED ASSOCIATI ---
+SCHEDULE = {
+    "08:00": {"name": "🌅 Morning Spark", "feeds": ["https://www.wired.it/feed/"]},
+    "13:00": {"name": "🍱 Lunch Byte", "feeds": ["https://www.hwupgrade.it/news/rss/"]},
+    "18:00": {"name": "⚡ Brain Snack", "feeds": ["https://www.startupitalia.eu/feed"]},
+    "22:00": {"name": "🌙 Touch Insight", "feeds": ["https://www.tomshw.it/feed/"]}
+}
+
+# --- PROMPTS ISPIRAZIONALI ---
+PROMPTS = [
+    "💡 Cosa puoi automatizzare oggi per risparmiare 10 minuti domani?",
+    "🧠 Qual è l’idea più piccola che potrebbe cambiare la tua giornata?",
+    "⚙️ Se avessi un assistente IA perfetto, cosa gli faresti fare adesso?",
+    "🎨 Immagina la tecnologia come arte. Cosa creerebbe di bello oggi?",
+    "🌍 Oggi prova a spiegare un concetto complesso con una metafora semplice."
+]
 
 app = Flask(__name__)
+sent_today = set()
 
-BOT_TOKEN = os.getenv("8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v9g")
-CHAT_ID = os.getenv("5205240046")
-
-FEEDS = [
-    "https://www.wired.it/feed/",
-    "https://www.ilsole24ore.com/rss/tecnologia--tecnologie.xml",
-    "https://www.hwupgrade.it/news/rss/",
-    "https://tech.everyeye.it/rss/notizie/",
-    "https://www.tomshw.it/feed/",
-    "https://www.ai4business.it/feed/",
-    "https://www.startupitalia.eu/feed",
-    "https://www.cybersecurity360.it/feed/"
-]
-
-PROMPTS = [
-    "💡 Suggerisci 3 prompt per creare post di qualità sui social.",
-    "🧠 Scrivi un prompt per chiedere a ChatGPT di spiegare un concetto tecnico in modo chiaro.",
-    "⚙️ Crea un prompt per migliorare la produttività con l'intelligenza artificiale.",
-    "🎨 Genera un prompt per un'immagine in stile cyberpunk ambientata a Roma.",
-    "📊 Elabora un prompt per analizzare dati aziendali con IA."
-]
-
-def log(msg): 
-    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
+# --- FUNZIONI BASE ---
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    r = requests.post(url, data=payload)
-    if r.ok:
-        log("✅ Messaggio inviato.")
-    else:
-        log(f"❌ Errore Telegram: {r.text}")
+    try:
+        r = requests.post(url, data=payload, timeout=10)
+        if r.ok:
+            log("✅ Messaggio inviato.")
+        else:
+            log(f"❌ Errore Telegram: {r.text}")
+    except Exception as e:
+        log(f"⚠️ Errore di rete: {e}")
 
-def get_news():
-    all_entries = []
-    for url in FEEDS:
-        try:
-            feed = feedparser.parse(url)
-            for e in feed.entries[:2]:
-                title = e.get("title", "")
-                summary = e.get("summary", e.get("description", ""))[:400]
-                link = e.get("link", "")
-                if title and link:
-                    all_entries.append({"title": title, "summary": summary, "link": link})
-        except Exception as ex:
-            log(f"Errore nel feed {url}: {ex}")
-    return all_entries
+# --- LOGICA DELLE RUBRICHE ---
+def check_schedule():
+    now = datetime.now().strftime("%H:%M")
+    if now in SCHEDULE and now not in sent_today:
+        rubrica = SCHEDULE[now]
+        intro = f"{rubrica['name']} — la tua dose di curiosità tech 👇"
+        send_message(intro)
 
-def main():
-    log("🚀 Avvio TouchBot (Render version)")
-    entries = get_news()
-    count = 0
-    for entry in entries:
-        msg = f"🧠 *{entry['title']}*\n{entry['summary']}\n🔗 {entry['link']}"
-        send_message(msg)
-        count += 1
-        time.sleep(5)
-    send_message(f"✅ Inviate {count} notizie italiane.\n✨ Prompt del Giorno:\n{random.choice(PROMPTS)}")
-    log("✅ Routine completata.")
+        for url in rubrica["feeds"]:
+            try:
+                feed = feedparser.parse(url)
+                if feed.entries:
+                    entry = random.choice(feed.entries[:3])
+                    msg = f"🧠 *{entry.title}*\n{entry.summary[:400]}\n🔗 {entry.link}"
+                    send_message(msg)
+            except Exception as ex:
+                log(f"Errore nel feed {url}: {ex}")
 
-# thread per il bot
+        # prompt del giorno a caso
+        send_message(random.choice(PROMPTS))
+        sent_today.add(now)
+        log(f"Inviata rubrica: {rubrica['name']}")
+
+    # reset giornaliero
+    if now == "00:00":
+        sent_today.clear()
+        log("🔄 Reset rubriche giornaliero completato.")
+
+# --- LOOP IN BACKGROUND ---
 def background_loop():
+    log("🚀 Avvio TouchBot (Touch Routine v1.0)")
     while True:
-        main()
-        log("💤 Attesa 24h...")
-        time.sleep(86400)
+        check_schedule()
+        time.sleep(60)  # controllo ogni minuto
 
+# --- FLASK ROUTE ---
 @app.route('/')
 def home():
     return "TouchBot è attivo 🚀"
 
+# --- AVVIO THREAD E SERVER ---
 if __name__ == "__main__":
     threading.Thread(target=background_loop).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
