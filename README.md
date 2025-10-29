@@ -1,4 +1,3 @@
-# Touch – Daily AI Routine
 ![Touch AI Daily](banner_touch.png)
 
 # 🤖 Touch – Daily AI Routine
