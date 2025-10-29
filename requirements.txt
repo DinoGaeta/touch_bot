@@ -1,7 +1,6 @@
 Flask
-feedparser
 requests
-pydub
+feedparser
 
 
 
