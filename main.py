@@ -197,8 +197,13 @@ def forza(nome):
 
     for url in rubrica_trovata["feeds"]:
         try:
-            feed = feedparser.parse(url)
-            if feed.entries:
+            response = requests.get(url, headers=headers, timeout=15)
+log(f"🌐 Feed {url} → status {response.status_code}, len={len(response.text)}")
+feed = feedparser.parse(response.content)
+
+if not feed.entries:
+    log(f"⚠️ Feed vuoto o non valido ({url[:40]}...)")
+
                 entry = random.choice(feed.entries[:3])
                 send_entry_with_audio(entry)
                 log(f"✅ Notizia inviata da feed: {url}")
