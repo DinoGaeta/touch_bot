@@ -107,7 +107,11 @@ def check_schedule():
                     send_message(msg)
 
                     # genera e invia voce
-                    audio_text = f"{entry.title}. {entry.summary[:200]}"
+                    # --- versione ottimizzata: solo titolo + frase gancio ---
+summary = entry.summary.strip().split(". ")
+gancio = summary[0] if summary else ""
+audio_text = f"{entry.title}. {gancio}."
+
                     audio_file = generate_voice(audio_text)
                     if audio_file:
                         send_audio(audio_file)
