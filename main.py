@@ -121,18 +121,32 @@ def telegram_send(text):
         log(f"❌ Errore rete Telegram: {e}")
 
 def fetch_feed_entries(feed_urls):
-    urls = list(feed_urls)
-    random.shuffle(urls)
+    """Scarica feed con headers avanzati e retry automatico."""
     all_entries = []
-    for url in urls:
+    for url in feed_urls:
         try:
-            resp = requests.get(url, headers=UA_HEADERS, timeout=15)
-            if not resp.ok: continue
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer": "https://www.google.com"
+            }
+            resp = requests.get(url, headers=headers, timeout=20)
+            if not resp.ok:
+                log(f"⚠️ Feed {url} → HTTP {resp.status_code}")
+                continue
             feed = feedparser.parse(resp.content)
+            log(f"📥 {url[:50]}... → {len(feed.entries)} articoli trovati")
+            if not feed.entries:
+                # Tentativo di fallback forzando UTF-8
+                feed = feedparser.parse(resp.text.encode("utf-8"))
+                log(f"↩️ Retry UTF-8: {len(feed.entries)} articoli")
             all_entries.extend(feed.entries)
         except Exception as ex:
             log(f"⚠️ Feed error ({url}): {ex}")
+    if not all_entries:
+        log("❌ Nessun articolo valido trovato in tutti i feed.")
     return all_entries
+
 
 def pick_fresh_entry(feed_group):
     entries = fetch_feed_entries(feed_group)
