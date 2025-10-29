@@ -8,13 +8,13 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v
 CHAT_ID   = os.getenv("CHAT_ID",   "5205240046")
 
 START_HOUR = int(os.getenv("START_HOUR", "7"))
-END_HOUR   = int(os.getenv("END_HOUR", "22"))
+END_HOUR   = int(os.getenv("END_HOUR",   "22"))
 
-UA_HEADERS = {'User-Agent': 'TouchBot v4.2 (KitsuneLabs/Touch)'}
+UA_HEADERS = {'User-Agent': 'TouchBot v4.3 (KitsuneLabs/Touch)'}
 
 app = Flask(__name__)
 
-# Tracciamenti
+# === TRACKING ===
 sent_today_hours = set()
 SENT_LINKS = set()
 ALERT_SENT_IDS = set()
@@ -24,21 +24,14 @@ REPORT = []
 SHUBUKAN_IMAGE = "https://touch-worker-8ke3.onrender.com/static/shubukan_orari.png"
 
 ADS = [
-    "🥋 *Shubukan Torino — Kendo & Via della Presenza*\n"
-    "Allenamenti a Torino e Carmagnola. Lezione di prova gratuita.\n"
-    "_Allenati alla calma nel movimento. Cresci nella disciplina._",
-
-    "🌿 *Shubukan Torino — Educazione marziale gentile*\n"
-    "Un dojo dove crescere in consapevolezza e presenza.\n"
-    "_Non solo sport: una via di armonia._",
+    "🥋 *Shubukan Torino — Kendo & Via della Presenza*\nAllenamenti a Torino e Carmagnola. Lezione di prova gratuita.\n_…_",
+    "🌿 *Shubukan Torino — Educazione marziale gentile*\nUn dojo dove crescere in consapevolezza e presenza.\n_…_",
 ]
 
 def sponsor_banner() -> str:
-    """Ritorna testo + immagine Shubukan"""
     return random.choice(ADS)
 
 def send_sponsor_photo():
-    """Invia la foto sponsor separata"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     caption = sponsor_banner()
     try:
@@ -52,20 +45,19 @@ def send_sponsor_photo():
         )
         if not r.ok:
             log(f"⚠️ Errore invio foto sponsor: {r.text}")
+        else:
+            log("📸 Sponsor inviato.")
     except Exception as e:
-        log(f"⚠️ Errore rete foto sponsor: {e}")
+        log(f"⚠️ Errore rete sponsor foto: {e}")
 
-# === FEEDS ===
+# === FEEDS aggiornati ===
 FEEDS_TECH = [
     "https://www.wired.it/feed/",
     "https://www.ilpost.it/tecnologia/feed/",
-    "https://www.hwupgrade.it/news/rss/",
-    "https://tech.everyeye.it/rss/notizie/",
-    "https://www.tomshw.it/feed/",
 ]
 FEEDS_FINANCE = [
-    "https://www.ilsole24ore.com/rss/finanza.xml",
-    "https://www.ansa.it/sito/notizie/economia/economia_rss.xml",
+    "https://www.quifinanza.it/feed-rss/",           # QuiFinanza :contentReference[oaicite:7]{index=7}
+    "https://it.investing.com/rss/news.rss",        # Investing.com :contentReference[oaicite:8]{index=8}
 ]
 FEEDS_GAMING = [
     "https://www.eurogamer.it/feed/rss",
@@ -76,18 +68,19 @@ FEEDS_CINEMA = [
     "https://movieplayer.it/rss/news/",
 ]
 FEEDS_AGENCIES = [
-    "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml",
+    "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml",   # ANSA Top News :contentReference[oaicite:9]{index=9}
     "https://www.ansa.it/sito/notizie/politica/politica_rss.xml",
 ]
 
 ROTATION = [FEEDS_TECH, FEEDS_FINANCE, FEEDS_GAMING, FEEDS_CINEMA, FEEDS_AGENCIES]
 
 ALERT_KEYWORDS = [
-    "ultim'ora", "breaking", "allerta", "allarme", "urgente", "attentato",
-    "terremoto", "guerra", "missili", "evacuazione", "blackout", "cyberattacco",
+    "ultim'ora", "breaking", "allerta", "allarme", "urgente",
+    "attentato", "terremoto", "guerra", "missili", "evacuazione",
+    "blackout", "cyberattacco",
 ]
 
-# === UTILS ===
+# === UTILITIES ===
 def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
@@ -126,8 +119,10 @@ def fetch_feed_entries(feed_urls):
     for url in urls:
         try:
             resp = requests.get(url, headers=UA_HEADERS, timeout=15)
+            log(f"🔎 Feed {url} → status {resp.status_code}, len={len(resp.content) if resp.ok else 'err'}")
             if not resp.ok: continue
             feed = feedparser.parse(resp.content)
+            log(f"📰 Parsed entries: {len(feed.entries)} from {url}")
             all_entries.extend(feed.entries)
         except Exception as ex:
             log(f"⚠️ Feed error ({url}): {ex}")
@@ -141,7 +136,8 @@ def pick_fresh_entry(feed_group):
         if link and link in SENT_LINKS:
             continue
         title = getattr(e, "title", "").strip()
-        if not title: continue
+        if not title:
+            continue
         return e
     return None
 
@@ -152,6 +148,7 @@ def send_article(feed_group, brand_name: str):
     entry = pick_fresh_entry(feed_group)
     if not entry:
         telegram_send(f"⚠️ Nessuna notizia trovata per *{brand_name}*.")
+        log(f"❌ Nessuna notizia inviata per {brand_name}")
         return False
 
     title = getattr(entry, "title", "Aggiornamento")
@@ -160,7 +157,11 @@ def send_article(feed_group, brand_name: str):
 
     msg = f"*{brand_name}*\n\n🧠 *{title}*\n{summary}\n🔗 {link}"
     telegram_send(msg)
-    send_sponsor_photo()
+
+    # Sponsor ogni 4 ore
+    if datetime.now().hour % 4 == 0:
+        send_sponsor_photo()
+
     SENT_LINKS.add(link)
     add_report(brand_name, title, link)
     log(f"✅ Inviato: {brand_name} — {title}")
@@ -172,9 +173,12 @@ def send_alerts():
     for e in entries[:12]:
         try:
             link = getattr(e, "link", "") or getattr(e, "id", "")
-            if link in ALERT_SENT_IDS: continue
-            if not is_recent(e, 60): continue
-            if not matches_alert(e): continue
+            if link in ALERT_SENT_IDS:
+                continue
+            if not is_recent(e, 60):
+                continue
+            if not matches_alert(e):
+                continue
 
             title = getattr(e, "title", "Aggiornamento").strip()
             summary = getattr(e, "summary", "").strip()[:400]
@@ -182,10 +186,10 @@ def send_alerts():
             telegram_send(msg)
             ALERT_SENT_IDS.add(link)
             add_report("ALERT", title, link)
-            log(f"🚨 ALERT: {title}")
+            log(f"🚨 ALERT inviata: {title}")
             sent_any = True
         except Exception as ex:
-            log(f"⚠️ Errore invio alert: {ex}")
+            log(f"⚠️ Errore alert feed: {ex}")
     return sent_any
 
 def reset_daily():
@@ -207,9 +211,10 @@ def check_scheduler():
     h, m = now.hour, now.minute
     key = f"{h:02d}:00"
 
-    if now.strftime("%H:%M") == "00:00": reset_daily()
+    if now.strftime("%H:%M") == "00:00":
+        reset_daily()
     if START_HOUR <= h <= END_HOUR and m == 0 and key not in sent_today_hours:
-        log("🔎 Check allerte…")
+        log("🔎 Check scheduler at hour:", h)
         send_alerts()
         hour_idx = (h - START_HOUR) % len(ROTATION)
         brand_name, feeds = hourly_brand_for(hour_idx)
@@ -228,7 +233,7 @@ def send_daily_report():
 
 # === LOOP ===
 def background_loop():
-    log("🚀 Avvio TouchBot v4.2 — Hourly + Alerts + Sponsor")
+    log("🚀 Avvio TouchBot v4.3 — Hourly + Alerts + Sponsor")
     while True:
         try:
             check_scheduler()
@@ -239,7 +244,7 @@ def background_loop():
 # === ROUTES ===
 @app.route("/")
 def home():
-    return "TouchBot v4.2 — Hourly + Alerts + Sponsor attivo ✅"
+    return "TouchBot v4.3 — attivo ✅"
 
 @app.route("/static/<path:filename>")
 def serve_static(filename):
@@ -263,7 +268,6 @@ def forza(slot: str):
     if not feeds:
         return "❌ Slot non valido. Usa: tech, finance, gaming, cinema, agenzie, alert"
 
-    # ✅ Fix: usa stringhe come chiavi
     names = {
         "tech": "🌅 Touch Tech — Morning Spark",
         "finance": "🍱 Touch Finance — Lunch Byte",
