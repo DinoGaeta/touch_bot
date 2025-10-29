@@ -9,11 +9,12 @@ CHAT_ID = "5205240046"
 
 # --- RUBRICHE E FEED ASSOCIATI ---
 SCHEDULE = {
-    "08:00": {"name": "🌅 Morning Spark", "feeds": ["https://www.wired.it/feed/"]},
-    "13:00": {"name": "🍱 Lunch Byte", "feeds": ["https://www.ansa.it/sito/notizie/tecnologia/tecnologia_rss.xml"]},
-    "18:00": {"name": "⚡ Brain Snack", "feeds": ["https://www.startupitalia.eu/feed"]},
-    "22:00": {"name": "🌙 Touch Insight", "feeds": ["https://www.tomshw.it/feed/"]}
+    "08:00": {"name": "🌅 Morning Spark", "feeds": ["https://www.ilpost.it/tecnologia/feed/"]},
+    "13:00": {"name": "🍱 Lunch Byte", "feeds": ["https://www.hdblog.it/rss/"]},
+    "18:00": {"name": "⚡ Brain Snack", "feeds": ["https://www.wired.it/feed/"]},
+    "22:00": {"name": "🌙 Touch Insight", "feeds": ["https://www.hwupgrade.it/news/rss/"]}
 }
+
 
 # --- PROMPTS ISPIRAZIONALI ---
 PROMPTS = [
