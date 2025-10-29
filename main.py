@@ -5,7 +5,7 @@ import time as pytime
 
 # === CONFIG ===
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v9g")
-CHAT_ID   = os.getenv("CHAT_ID", "5205240046")
+CHAT_ID   = os.getenv("CHAT_ID",   "5205240046")
 
 START_HOUR = int(os.getenv("START_HOUR", "7"))
 END_HOUR   = int(os.getenv("END_HOUR", "22"))
@@ -14,7 +14,7 @@ UA_HEADERS = {'User-Agent': 'TouchBot v4.2 (KitsuneLabs/Touch)'}
 
 app = Flask(__name__)
 
-# === TRACKING ===
+# Tracciamenti
 sent_today_hours = set()
 SENT_LINKS = set()
 ALERT_SENT_IDS = set()
@@ -22,7 +22,6 @@ REPORT = []
 
 # === SPONSOR: Shubukan Torino ===
 SHUBUKAN_IMAGE = "https://touch-worker-8ke3.onrender.com/static/shubukan_orari.png"
-SHUBUKAN_MAP = "https://maps.app.goo.gl/3tDkQdYyZo6v9j5x7"
 
 ADS = [
     "🥋 *Shubukan Torino — Kendo & Via della Presenza*\n"
@@ -35,25 +34,24 @@ ADS = [
 ]
 
 def sponsor_banner() -> str:
-    """Testo Shubukan casuale"""
+    """Ritorna testo + immagine Shubukan"""
     return random.choice(ADS)
 
 def send_sponsor_photo():
     """Invia la foto sponsor separata"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    caption = sponsor_banner() + f"\n📍 [Vedi su Google Maps]({SHUBUKAN_MAP})"
+    caption = sponsor_banner()
     try:
-        image_data = requests.get(SHUBUKAN_IMAGE, timeout=10).content
+        img_data = requests.get(SHUBUKAN_IMAGE, timeout=10).content
+        files = {"photo": ("shubukan.png", img_data)}
         r = requests.post(
             url,
             data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"},
-            files={"photo": ("shubukan.png", image_data)},
+            files=files,
             timeout=15,
         )
         if not r.ok:
             log(f"⚠️ Errore invio foto sponsor: {r.text}")
-        else:
-            log("📸 Sponsor Shubukan inviato.")
     except Exception as e:
         log(f"⚠️ Errore rete foto sponsor: {e}")
 
@@ -128,8 +126,7 @@ def fetch_feed_entries(feed_urls):
     for url in urls:
         try:
             resp = requests.get(url, headers=UA_HEADERS, timeout=15)
-            if not resp.ok:
-                continue
+            if not resp.ok: continue
             feed = feedparser.parse(resp.content)
             all_entries.extend(feed.entries)
         except Exception as ex:
@@ -144,8 +141,7 @@ def pick_fresh_entry(feed_group):
         if link and link in SENT_LINKS:
             continue
         title = getattr(e, "title", "").strip()
-        if not title:
-            continue
+        if not title: continue
         return e
     return None
 
@@ -164,11 +160,7 @@ def send_article(feed_group, brand_name: str):
 
     msg = f"*{brand_name}*\n\n🧠 *{title}*\n{summary}\n🔗 {link}"
     telegram_send(msg)
-
-    # Sponsor ogni 4 ore
-    if datetime.now().hour % 4 == 0:
-        send_sponsor_photo()
-
+    send_sponsor_photo()
     SENT_LINKS.add(link)
     add_report(brand_name, title, link)
     log(f"✅ Inviato: {brand_name} — {title}")
@@ -180,12 +172,9 @@ def send_alerts():
     for e in entries[:12]:
         try:
             link = getattr(e, "link", "") or getattr(e, "id", "")
-            if link in ALERT_SENT_IDS:
-                continue
-            if not is_recent(e, 60):
-                continue
-            if not matches_alert(e):
-                continue
+            if link in ALERT_SENT_IDS: continue
+            if not is_recent(e, 60): continue
+            if not matches_alert(e): continue
 
             title = getattr(e, "title", "Aggiornamento").strip()
             summary = getattr(e, "summary", "").strip()[:400]
@@ -218,8 +207,7 @@ def check_scheduler():
     h, m = now.hour, now.minute
     key = f"{h:02d}:00"
 
-    if now.strftime("%H:%M") == "00:00":
-        reset_daily()
+    if now.strftime("%H:%M") == "00:00": reset_daily()
     if START_HOUR <= h <= END_HOUR and m == 0 and key not in sent_today_hours:
         log("🔎 Check allerte…")
         send_alerts()
@@ -240,7 +228,7 @@ def send_daily_report():
 
 # === LOOP ===
 def background_loop():
-    log("🚀 Avvio TouchBot v4.2 — Hourly + Alerts + Sponsor ogni 4h")
+    log("🚀 Avvio TouchBot v4.2 — Hourly + Alerts + Sponsor")
     while True:
         try:
             check_scheduler()
@@ -265,20 +253,26 @@ def forza(slot: str):
         return "🚨 Alert inviati." if sent else "✅ Nessuna allerta ora."
 
     mapping = {
-        "tech": FEEDS_TECH, "finance": FEEDS_FINANCE,
-        "gaming": FEEDS_GAMING, "cinema": FEEDS_CINEMA, "agenzie": FEEDS_AGENCIES
+        "tech": FEEDS_TECH,
+        "finance": FEEDS_FINANCE,
+        "gaming": FEEDS_GAMING,
+        "cinema": FEEDS_CINEMA,
+        "agenzie": FEEDS_AGENCIES
     }
     feeds = mapping.get(slot)
     if not feeds:
         return "❌ Slot non valido. Usa: tech, finance, gaming, cinema, agenzie, alert"
+
+    # ✅ Fix: usa stringhe come chiavi
     names = {
-        FEEDS_TECH: "🌅 Touch Tech — Morning Spark",
-        FEEDS_FINANCE: "🍱 Touch Finance — Lunch Byte",
-        FEEDS_GAMING: "⚡ Touch Gaming — Brain Snack",
-        FEEDS_CINEMA: "🌙 Touch Cinema — Insight",
-        FEEDS_AGENCIES: "📰 Touch Top News — Agenzie",
+        "tech": "🌅 Touch Tech — Morning Spark",
+        "finance": "🍱 Touch Finance — Lunch Byte",
+        "gaming": "⚡ Touch Gaming — Brain Snack",
+        "cinema": "🌙 Touch Cinema — Insight",
+        "agenzie": "📰 Touch Top News — Agenzie",
     }
-    brand_name = names.get(feeds, "Touch News")
+
+    brand_name = names.get(slot, "Touch News")
     telegram_send(f"⚡ Forzato: *{brand_name}*")
     ok = send_article(feeds, brand_name)
     return "✅ Inviato." if ok else "⚠️ Nessuna notizia trovata."
