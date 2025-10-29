@@ -17,7 +17,7 @@ JINGLE_URL    = os.getenv("JINGLE_URL", "")  # es: https://.../touch_jingle_1s.m
 # --- RUBRICHE E FEED ASSOCIATI ---
 SCHEDULE = {
     "08:00": {"name": "🌅 Morning Spark", "feeds": ["https://www.wired.it/feed/"]},
-    "13:00": {"name": "🍱 Lunch Byte", "feeds": ["https://www.hwupgrade.it/news/rss/"]},
+    "13:00": {"name": "🍱 Lunch Byte", "feeds": ["https://www.ansa.it/sito/notizie/tecnologia/tecnologia_rss.xml"]},
     "18:00": {"name": "⚡ Brain Snack", "feeds": ["https://www.startupitalia.eu/feed"]},
     "22:00": {"name": "🌙 Touch Insight", "feeds": ["https://www.tomshw.it/feed/"]}
 }
@@ -44,7 +44,7 @@ def send_message(text: str):
     try:
         r = requests.post(url, data=payload, timeout=15)
         if r.ok:
-            log("✅ Messaggio inviato.")
+            log("✅ Messaggio inviato su Telegram.")
         else:
             log(f"❌ Errore Telegram: {r.text}")
     except Exception as e:
@@ -67,6 +67,9 @@ def generate_voice(text: str, out_mp3="voice.mp3"):
     if not ELEVEN_API_KEY:
         log("❌ Nessuna chiave ElevenLabs (ELEVEN_API_KEY).")
         return None
+    if not text.strip():
+        log("⚠️ Testo vuoto, salto generazione voce.")
+        return None
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
     headers = {"xi-api-key": ELEVEN_API_KEY, "Content-Type": "application/json"}
@@ -84,8 +87,7 @@ def generate_voice(text: str, out_mp3="voice.mp3"):
 
         with open(out_mp3, "wb") as f:
             f.write(resp.content)
-        log("🎙️ Voce generata.")
-
+        log("🎙️ Voce generata con successo.")
         return out_mp3
     except Exception as e:
         log(f"❌ Errore ElevenLabs: {e}")
@@ -192,3 +194,4 @@ def forza(nome):
 if __name__ == "__main__":
     threading.Thread(target=background_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
