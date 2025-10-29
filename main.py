@@ -105,13 +105,17 @@ def first_summary(entry):
 
 def telegram_send(text):
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"},
-            timeout=TIMEOUT,
-        )
-    except Exception as e:
-        log(f"⚠️ Telegram error: {e}")
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
+        headers = {"User-Agent": "TouchBot v5.0 (KitsuneLabs)"}
+        r = requests.post(url, data=payload, headers=headers, timeout=15, verify=True)
+        log(f"📡 Telegram → {r.status_code}: {r.reason}")
+        if not r.ok:
+            log(f"⚠️ Telegram response: {r.text}")
+        else:
+            log("✅ Messaggio inviato con successo su Telegram.")
+    except requests.exceptions.RequestException as e:
+        log(f"❌ Errore rete Telegram: {e}")
 
 def fetch_feed_entries(feed_urls):
     entries = []
