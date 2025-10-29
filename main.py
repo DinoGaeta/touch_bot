@@ -270,9 +270,28 @@ def serve_static(filename):
 @app.route("/forza/<slot>")
 def forza(slot: str):
     slot = slot.lower().strip()
+
     if slot in ["alert", "alerts"]:
         sent = send_alerts()
         return "🚨 Alert inviati." if sent else "✅ Nessuna allerta ora."
+
+    # mapping categorie -> feed + nome brand
+    mapping = {
+        "tech": ("🌅 Touch Tech — Morning Spark", FEEDS_TECH),
+        "finance": ("🍱 Touch Finance — Lunch Byte", FEEDS_FINANCE),
+        "gaming": ("⚡ Touch Gaming — Brain Snack", FEEDS_GAMING),
+        "cinema": ("🌙 Touch Cinema — Insight", FEEDS_CINEMA),
+        "agenzie": ("📰 Touch Top News — Agenzie", FEEDS_AGENCIES),
+    }
+
+    if slot not in mapping:
+        return "❌ Slot non valido. Usa: tech, finance, gaming, cinema, agenzie, alert"
+
+    brand_name, feeds = mapping[slot]
+    telegram_send(f"⚡ Forzato: *{brand_name}*")
+    ok = send_article(feeds, brand_name)
+    return "✅ Inviato." if ok else "⚠️ Nessuna notizia trovata."
+
 
     mapping = {
         "tech": FEEDS_TECH, "finance": FEEDS_FINANCE,
