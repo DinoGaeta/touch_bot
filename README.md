@@ -1,4 +1,7 @@
 # Touch – Daily AI Routine
+![Touch AI Daily](banner_touch.png)
+
+# 🤖 Touch – Daily AI Routine
 
 **Touch** è un micro-bot editoriale intelligente che distribuisce notizie, curiosità e prompt ispirazionali durante la giornata seguendo i cicli cognitivi umani.
 
