@@ -1,16 +1,18 @@
 from flask import Flask
 import threading
-import os, requests, feedparser, random, time, json
+import os, requests, feedparser, random, time
 from datetime import datetime
-from pydub import AudioSegment
-
 
 # --- CONFIGURAZIONE ---
 BOT_TOKEN = "8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v9g"  # <-- il tuo token
 CHAT_ID = "5205240046"
 
-ELEVEN_VOICE_ID = "OHF6JUenqAcr2JhVngrN"  # la voce personalizzata che hai creato
-ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")  # chiave salvata su Render
+ELEVEN_VOICE_ID = "OHF6JUenqAcr2JhVngrN"             # la tua voce ElevenLabs
+ELEVEN_API_KEY  = os.getenv("ELEVEN_API_KEY")        # chiave salvata su Render
+
+# JINGLE opzionale (richiede ffmpeg se abiliti ENABLE_JINGLE=1)
+ENABLE_JINGLE = os.getenv("ENABLE_JINGLE", "0") == "1"
+JINGLE_URL    = os.getenv("JINGLE_URL", "")  # es: https://.../touch_jingle_1s.mp3
 
 # --- RUBRICHE E FEED ASSOCIATI ---
 SCHEDULE = {
@@ -32,39 +34,38 @@ PROMPTS = [
 app = Flask(__name__)
 sent_today = set()
 
-# --- UTILITY LOG ---
-def log(msg):
+def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-# --- TELEGRAM BASE ---
-def send_message(text):
+# --- TELEGRAM ---
+def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
-        r = requests.post(url, data=payload, timeout=10)
+        r = requests.post(url, data=payload, timeout=15)
         if r.ok:
             log("✅ Messaggio inviato.")
         else:
             log(f"❌ Errore Telegram: {r.text}")
     except Exception as e:
-        log(f"⚠️ Errore di rete: {e}")
+        log(f"⚠️ Errore di rete Telegram: {e}")
 
-def send_audio(file_path):
+def send_audio(file_path: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendAudio"
     try:
         with open(file_path, "rb") as f:
-            r = requests.post(url, data={"chat_id": CHAT_ID}, files={"audio": f})
+            r = requests.post(url, data={"chat_id": CHAT_ID}, files={"audio": f}, timeout=60)
         if r.ok:
             log("🎧 Audio inviato su Telegram.")
         else:
             log(f"⚠️ Errore invio audio: {r.text}")
     except Exception as e:
-        log(f"❌ Errore apertura file audio: {e}")
+        log(f"❌ Errore apertura/invio file audio: {e}")
 
-# --- ELEVENLABS TTS ---
-def generate_voice(text, filename="voice.mp3"):
+# --- ELEVENLABS TTS (titolo + frase gancio) ---
+def generate_voice(text: str, out_mp3="voice.mp3"):
     if not ELEVEN_API_KEY:
-        log("❌ Nessuna chiave ElevenLabs trovata.")
+        log("❌ Nessuna chiave ElevenLabs (ELEVEN_API_KEY).")
         return None
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
@@ -76,95 +77,84 @@ def generate_voice(text, filename="voice.mp3"):
     }
 
     try:
-        # --- genera voce principale ---
-        response = requests.post(url, json=payload, headers=headers, timeout=20)
-        if response.status_code == 200:
-            with open(filename, "wb") as f:
-                f.write(response.content)
-            log("🎙️ Voce generata con successo.")
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            log(f"⚠️ ElevenLabs error {resp.status_code}: {resp.text[:200]}")
+            return None
 
-            # --- aggiunge jingle ---
-            jingle_url = "https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/Jingle_Bells_Tech.wav"
-            jingle_file = "jingle.wav"
-            r = requests.get(jingle_url, timeout=10)
-            if r.ok:
-                with open(jingle_file, "wb") as f:
-                    f.write(r.content)
+        # salva voce base
+        with open(out_mp3, "wb") as f:
+            f.write(resp.content)
+        log("🎙️ Voce generata.")
 
-                # unisce jingle + voce
-                jingle = AudioSegment.from_file(jingle_file, format="wav")
-                voice = AudioSegment.from_file(filename, format="mp3")
-                final_audio = jingle + voice
-                final_audio.export("final.mp3", format="mp3")
-                log("🎧 Audio finale con jingle creato.")
-                return "final.mp3"
-            else:
-                log("⚠️ Jingle non scaricato, uso voce sola.")
-                return filename
-        else:
-            log(f"⚠️ Errore ElevenLabs: {response.status_code} - {response.text}")
+        # opzionale: prepend jingle (richiede pydub+ffmpeg)
+        if ENABLE_JINGLE and JINGLE_URL:
+            try:
+                from pydub import AudioSegment
+                # scarica jingle
+                j = requests.get(JINGLE_URL, timeout=15)
+                if j.ok:
+                    with open("jingle.mp3", "wb") as jf:
+                        jf.write(j.content)
+                    jingle = AudioSegment.from_file("jingle.mp3", format="mp3")
+                    voice  = AudioSegment.from_file(out_mp3,     format="mp3")
+                    final  = jingle + voice
+                    final.export("final.mp3", format="mp3")
+                    log("🔔 Jingle aggiunto.")
+                    return "final.mp3"
+                else:
+                    log("⚠️ Jingle non scaricato, invio solo voce.")
+            except Exception as je:
+                log(f"⚠️ Jingle disabilitato (pydub/ffmpeg): {je}")
+        return out_mp3
+
     except Exception as e:
-        log(f"❌ Errore richiesta ElevenLabs: {e}")
-    return None
+        log(f"❌ Errore ElevenLabs: {e}")
+        return None
 
+# --- CORE: invio rubrica + audio ---
+def send_entry_with_audio(entry):
+    # testo
+    title = getattr(entry, "title", "Aggiornamento")
+    summary = getattr(entry, "summary", "").strip()
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
-    headers = {
-        "xi-api-key": ELEVEN_API_KEY,
-        "Content-Type": "application/json"
-    }
+    # messaggio testuale
+    msg = f"🧠 *{title}*\n{summary[:400]}\n🔗 {getattr(entry, 'link', '')}"
+    send_message(msg)
 
-    payload = {
-        "text": text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {"stability": 0.55, "similarity_boost": 0.75}
-    }
+    # audio: titolo + frase gancio (prima frase del summary)
+    gancio = ""
+    if summary:
+        # split robusto: fine frase con punto o punto + spazio
+        parts = [p.strip() for p in summary.replace("\n", " ").split(". ") if p.strip()]
+        gancio = parts[0] if parts else ""
 
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=20)
-        if response.status_code == 200:
-            with open(filename, "wb") as f:
-                f.write(response.content)
-            log(f"🎙️ Voce generata con successo: {filename}")
-            return filename
-        else:
-            log(f"⚠️ Errore ElevenLabs: {response.status_code} - {response.text}")
-    except Exception as e:
-        log(f"❌ Errore richiesta ElevenLabs: {e}")
-    return None
+    audio_text = f"{title}. {gancio}.".strip()
+    audio_file = generate_voice(audio_text)
+    if audio_file:
+        send_audio(audio_file)
 
 # --- LOGICA DELLE RUBRICHE ---
 def check_schedule():
     now = datetime.now().strftime("%H:%M")
+
     if now in SCHEDULE and now not in sent_today:
         rubrica = SCHEDULE[now]
-        intro = f"{rubrica['name']} — la tua dose di curiosità tech 👇"
-        send_message(intro)
+        send_message(f"{rubrica['name']} — la tua dose di curiosità tech 👇")
 
         for url in rubrica["feeds"]:
             try:
                 feed = feedparser.parse(url)
                 if feed.entries:
                     entry = random.choice(feed.entries[:3])
-                    msg = f"🧠 *{entry.title}*\n{entry.summary[:400]}\n🔗 {entry.link}"
-                    send_message(msg)
-
-                    # genera e invia voce
-                    # --- versione ottimizzata: solo titolo + frase gancio ---
-summary = entry.summary.strip().split(". ")
-gancio = summary[0] if summary else ""
-audio_text = f"{entry.title}. {gancio}."
-
-                    audio_file = generate_voice(audio_text)
-                    if audio_file:
-                        send_audio(audio_file)
+                    send_entry_with_audio(entry)
             except Exception as ex:
-                log(f"Errore nel feed {url}: {ex}")
+                log(f"⚠️ Errore nel feed {url}: {ex}")
 
-        # prompt del giorno a caso
+        # prompt del giorno
         send_message(random.choice(PROMPTS))
         sent_today.add(now)
-        log(f"Inviata rubrica: {rubrica['name']}")
+        log(f"📬 Inviata rubrica: {rubrica['name']}")
 
     # reset giornaliero
     if now == "00:00":
@@ -173,40 +163,35 @@ audio_text = f"{entry.title}. {gancio}."
 
 # --- LOOP IN BACKGROUND ---
 def background_loop():
-    log("🚀 Avvio TouchBot (Touch Routine v2.1 + ElevenLabs Voice)")
+    log("🚀 Avvio TouchBot (Touch Routine v2.2 + Voice)")
     while True:
         check_schedule()
-        time.sleep(60)  # controllo ogni minuto
+        time.sleep(60)
 
-# --- FLASK ROUTE ---
-@app.route('/')
+# --- FLASK ROUTES ---
+@app.route("/")
 def home():
     return "TouchBot è attivo 🚀"
 
-@app.route('/forza/<nome>')
+@app.route("/forza/<nome>")
 def forza(nome):
     nome = nome.lower()
-    for ora, rubrica in SCHEDULE.items():
+    for _, rubrica in SCHEDULE.items():
         if nome in rubrica["name"].lower() or nome in ["morning", "lunch", "brain", "insight"]:
             log(f"⚡ Forzata rubrica: {rubrica['name']}")
             send_message(f"⚡ Rubrica forzata manualmente: {rubrica['name']}")
-            
             for url in rubrica["feeds"]:
-                feed = feedparser.parse(url)
-                if feed.entries:
-                    entry = random.choice(feed.entries[:3])
-                    msg = f"🧠 *{entry.title}*\n{entry.summary[:400]}\n🔗 {entry.link}"
-                    send_message(msg)
-
-                    audio_text = f"{entry.title}. {entry.summary[:200]}"
-                    audio_file = generate_voice(audio_text)
-                    if audio_file:
-                        send_audio(audio_file)
+                try:
+                    feed = feedparser.parse(url)
+                    if feed.entries:
+                        entry = random.choice(feed.entries[:3])
+                        send_entry_with_audio(entry)
+                except Exception as ex:
+                    log(f"⚠️ Errore nel feed {url}: {ex}")
             return f"Rubrica {rubrica['name']} inviata ✅"
     return "Nome rubrica non trovato ❌"
 
-
-# --- AVVIO THREAD E SERVER ---
+# --- BOOT ---
 if __name__ == "__main__":
     threading.Thread(target=background_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
