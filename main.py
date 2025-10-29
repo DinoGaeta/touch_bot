@@ -176,20 +176,35 @@ def home():
 @app.route("/forza/<nome>")
 def forza(nome):
     nome = nome.lower()
+    rubrica_trovata = None
+
     for _, rubrica in SCHEDULE.items():
         if nome in rubrica["name"].lower() or nome in ["morning", "lunch", "brain", "insight"]:
-            log(f"⚡ Forzata rubrica: {rubrica['name']}")
-            send_message(f"⚡ Rubrica forzata manualmente: {rubrica['name']}")
-            for url in rubrica["feeds"]:
-                try:
-                    feed = feedparser.parse(url)
-                    if feed.entries:
-                        entry = random.choice(feed.entries[:3])
-                        send_entry_with_audio(entry)
-                except Exception as ex:
-                    log(f"⚠️ Errore nel feed {url}: {ex}")
-            return f"Rubrica {rubrica['name']} inviata ✅"
-    return "Nome rubrica non trovato ❌"
+            rubrica_trovata = rubrica
+            break
+
+    if not rubrica_trovata:
+        log("❌ Rubrica non trovata.")
+        return "Nome rubrica non trovato ❌"
+
+    log(f"⚡ Forzata rubrica: {rubrica_trovata['name']}")
+    send_message(f"⚡ Rubrica forzata manualmente: {rubrica_trovata['name']}")
+
+    for url in rubrica_trovata["feeds"]:
+        try:
+            feed = feedparser.parse(url)
+            if feed.entries:
+                entry = random.choice(feed.entries[:3])
+                send_entry_with_audio(entry)
+                log(f"✅ Notizia inviata da feed: {url}")
+            else:
+                log(f"⚠️ Nessuna entry trovata in {url}")
+        except Exception as ex:
+            log(f"⚠️ Errore parsing feed {url}: {ex}")
+
+    send_message(random.choice(PROMPTS))
+    return f"Rubrica {rubrica_trovata['name']} inviata ✅"
+
 
 # --- BOOT ---
 if __name__ == "__main__":
