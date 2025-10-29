@@ -82,50 +82,24 @@ def generate_voice(text: str, out_mp3="voice.mp3"):
             log(f"⚠️ ElevenLabs error {resp.status_code}: {resp.text[:200]}")
             return None
 
-        # salva voce base
         with open(out_mp3, "wb") as f:
             f.write(resp.content)
         log("🎙️ Voce generata.")
 
-        # opzionale: prepend jingle (richiede pydub+ffmpeg)
-        if ENABLE_JINGLE and JINGLE_URL:
-            try:
-                from pydub import AudioSegment
-                # scarica jingle
-                j = requests.get(JINGLE_URL, timeout=15)
-                if j.ok:
-                    with open("jingle.mp3", "wb") as jf:
-                        jf.write(j.content)
-                    jingle = AudioSegment.from_file("jingle.mp3", format="mp3")
-                    voice  = AudioSegment.from_file(out_mp3,     format="mp3")
-                    final  = jingle + voice
-                    final.export("final.mp3", format="mp3")
-                    log("🔔 Jingle aggiunto.")
-                    return "final.mp3"
-                else:
-                    log("⚠️ Jingle non scaricato, invio solo voce.")
-            except Exception as je:
-                log(f"⚠️ Jingle disabilitato (pydub/ffmpeg): {je}")
         return out_mp3
-
     except Exception as e:
         log(f"❌ Errore ElevenLabs: {e}")
         return None
 
 # --- CORE: invio rubrica + audio ---
 def send_entry_with_audio(entry):
-    # testo
     title = getattr(entry, "title", "Aggiornamento")
     summary = getattr(entry, "summary", "").strip()
-
-    # messaggio testuale
     msg = f"🧠 *{title}*\n{summary[:400]}\n🔗 {getattr(entry, 'link', '')}"
     send_message(msg)
 
-    # audio: titolo + frase gancio (prima frase del summary)
     gancio = ""
     if summary:
-        # split robusto: fine frase con punto o punto + spazio
         parts = [p.strip() for p in summary.replace("\n", " ").split(". ") if p.strip()]
         gancio = parts[0] if parts else ""
 
@@ -137,7 +111,6 @@ def send_entry_with_audio(entry):
 # --- LOGICA DELLE RUBRICHE ---
 def check_schedule():
     now = datetime.now().strftime("%H:%M")
-
     if now in SCHEDULE and now not in sent_today:
         rubrica = SCHEDULE[now]
         send_message(f"{rubrica['name']} — la tua dose di curiosità tech 👇")
@@ -145,18 +118,20 @@ def check_schedule():
         for url in rubrica["feeds"]:
             try:
                 headers = {'User-Agent': 'Mozilla/5.0 (TouchBot by KitsuneLabs)'}
-                feed = feedparser.parse(requests.get(url, headers=headers, timeout=15).content)
+                response = requests.get(url, headers=headers, timeout=15)
+                log(f"🌐 Feed {url} → status {response.status_code}, len={len(response.text)}")
+                feed = feedparser.parse(response.content)
+
                 if feed.entries:
                     entry = random.choice(feed.entries[:3])
                     send_entry_with_audio(entry)
                     log(f"✅ Notizia inviata da feed: {url}")
                 else:
-                    send_message(f"⚠️ Nessuna notizia trovata su {url}")
                     log(f"⚠️ Nessuna entry trovata in {url}")
+                    send_message(f"⚠️ Nessuna notizia trovata su {url}")
             except Exception as ex:
                 log(f"⚠️ Errore nel feed {url}: {ex}")
 
-        # prompt del giorno
         send_message(random.choice(PROMPTS))
         sent_today.add(now)
         log(f"📬 Inviata rubrica: {rubrica['name']}")
@@ -165,10 +140,9 @@ def check_schedule():
         sent_today.clear()
         log("🔄 Reset rubriche giornaliero completato.")
 
-
 # --- LOOP IN BACKGROUND ---
 def background_loop():
-    log("🚀 Avvio TouchBot (Touch Routine v2.2 + Voice)")
+    log("🚀 Avvio TouchBot (Touch Routine v2.3 + Voice)")
     while True:
         check_schedule()
         time.sleep(60)
@@ -182,7 +156,6 @@ def home():
 def forza(nome):
     nome = nome.lower()
     rubrica_trovata = None
-
     for _, rubrica in SCHEDULE.items():
         if nome in rubrica["name"].lower() or nome in ["morning", "lunch", "brain", "insight"]:
             rubrica_trovata = rubrica
@@ -195,26 +168,25 @@ def forza(nome):
     log(f"⚡ Forzata rubrica: {rubrica_trovata['name']}")
     send_message(f"⚡ Rubrica forzata manualmente: {rubrica_trovata['name']}")
 
+    headers = {'User-Agent': 'Mozilla/5.0 (TouchBot by KitsuneLabs)'}
     for url in rubrica_trovata["feeds"]:
         try:
             response = requests.get(url, headers=headers, timeout=15)
-log(f"🌐 Feed {url} → status {response.status_code}, len={len(response.text)}")
-feed = feedparser.parse(response.content)
+            log(f"🌐 Feed {url} → status {response.status_code}, len={len(response.text)}")
+            feed = feedparser.parse(response.content)
 
-if not feed.entries:
-    log(f"⚠️ Feed vuoto o non valido ({url[:40]}...)")
+            if not feed.entries:
+                log(f"⚠️ Feed vuoto o non valido ({url[:40]}...)")
+                continue
 
-                entry = random.choice(feed.entries[:3])
-                send_entry_with_audio(entry)
-                log(f"✅ Notizia inviata da feed: {url}")
-            else:
-                log(f"⚠️ Nessuna entry trovata in {url}")
+            entry = random.choice(feed.entries[:3])
+            send_entry_with_audio(entry)
+            log(f"✅ Notizia inviata da feed: {url}")
         except Exception as ex:
             log(f"⚠️ Errore parsing feed {url}: {ex}")
 
     send_message(random.choice(PROMPTS))
     return f"Rubrica {rubrica_trovata['name']} inviata ✅"
-
 
 # --- BOOT ---
 if __name__ == "__main__":
