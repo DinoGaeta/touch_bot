@@ -136,6 +136,29 @@ def background_loop():
 def home():
     return "TouchBot è attivo 🚀"
 
+@app.route('/forza/<nome>')
+def forza(nome):
+    nome = nome.lower()
+    for ora, rubrica in SCHEDULE.items():
+        if nome in rubrica["name"].lower() or nome in ["morning", "lunch", "brain", "insight"]:
+            log(f"⚡ Forzata rubrica: {rubrica['name']}")
+            send_message(f"⚡ Rubrica forzata manualmente: {rubrica['name']}")
+            
+            for url in rubrica["feeds"]:
+                feed = feedparser.parse(url)
+                if feed.entries:
+                    entry = random.choice(feed.entries[:3])
+                    msg = f"🧠 *{entry.title}*\n{entry.summary[:400]}\n🔗 {entry.link}"
+                    send_message(msg)
+
+                    audio_text = f"{entry.title}. {entry.summary[:200]}"
+                    audio_file = generate_voice(audio_text)
+                    if audio_file:
+                        send_audio(audio_file)
+            return f"Rubrica {rubrica['name']} inviata ✅"
+    return "Nome rubrica non trovato ❌"
+
+
 # --- AVVIO THREAD E SERVER ---
 if __name__ == "__main__":
     threading.Thread(target=background_loop, daemon=True).start()
