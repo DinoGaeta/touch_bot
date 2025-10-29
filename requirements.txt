@@ -1,5 +1,7 @@
-requests
+Flask
 feedparser
-Flask==3.0.3
+requests
 pydub
+
+
 
