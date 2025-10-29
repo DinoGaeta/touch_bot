@@ -2,6 +2,8 @@ from flask import Flask
 import threading
 import os, requests, feedparser, random, time, json
 from datetime import datetime
+from pydub import AudioSegment
+
 
 # --- CONFIGURAZIONE ---
 BOT_TOKEN = "8253247089:AAH6-F0rNEiOMnFTMnwWnrrTG9l_WZO2v9g"  # <-- il tuo token
@@ -64,6 +66,47 @@ def generate_voice(text, filename="voice.mp3"):
     if not ELEVEN_API_KEY:
         log("❌ Nessuna chiave ElevenLabs trovata.")
         return None
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
+    headers = {"xi-api-key": ELEVEN_API_KEY, "Content-Type": "application/json"}
+    payload = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {"stability": 0.55, "similarity_boost": 0.75}
+    }
+
+    try:
+        # --- genera voce principale ---
+        response = requests.post(url, json=payload, headers=headers, timeout=20)
+        if response.status_code == 200:
+            with open(filename, "wb") as f:
+                f.write(response.content)
+            log("🎙️ Voce generata con successo.")
+
+            # --- aggiunge jingle ---
+            jingle_url = "https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/Jingle_Bells_Tech.wav"
+            jingle_file = "jingle.wav"
+            r = requests.get(jingle_url, timeout=10)
+            if r.ok:
+                with open(jingle_file, "wb") as f:
+                    f.write(r.content)
+
+                # unisce jingle + voce
+                jingle = AudioSegment.from_file(jingle_file, format="wav")
+                voice = AudioSegment.from_file(filename, format="mp3")
+                final_audio = jingle + voice
+                final_audio.export("final.mp3", format="mp3")
+                log("🎧 Audio finale con jingle creato.")
+                return "final.mp3"
+            else:
+                log("⚠️ Jingle non scaricato, uso voce sola.")
+                return filename
+        else:
+            log(f"⚠️ Errore ElevenLabs: {response.status_code} - {response.text}")
+    except Exception as e:
+        log(f"❌ Errore richiesta ElevenLabs: {e}")
+    return None
+
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
     headers = {
