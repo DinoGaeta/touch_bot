@@ -144,10 +144,15 @@ def check_schedule():
 
         for url in rubrica["feeds"]:
             try:
-                feed = feedparser.parse(url)
+                headers = {'User-Agent': 'Mozilla/5.0 (TouchBot by KitsuneLabs)'}
+                feed = feedparser.parse(requests.get(url, headers=headers, timeout=15).content)
                 if feed.entries:
                     entry = random.choice(feed.entries[:3])
                     send_entry_with_audio(entry)
+                    log(f"✅ Notizia inviata da feed: {url}")
+                else:
+                    send_message(f"⚠️ Nessuna notizia trovata su {url}")
+                    log(f"⚠️ Nessuna entry trovata in {url}")
             except Exception as ex:
                 log(f"⚠️ Errore nel feed {url}: {ex}")
 
@@ -156,10 +161,10 @@ def check_schedule():
         sent_today.add(now)
         log(f"📬 Inviata rubrica: {rubrica['name']}")
 
-    # reset giornaliero
     if now == "00:00":
         sent_today.clear()
         log("🔄 Reset rubriche giornaliero completato.")
+
 
 # --- LOOP IN BACKGROUND ---
 def background_loop():
