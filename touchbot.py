@@ -1,55 +1,64 @@
-# === TOUCHBOT v5.4 — AutoScheduler + Kick Command + Cinema Fix + Sponsor Fix ===
+# === TOUCHBOT v5.5 — Stable Production Build ===
 from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Iterable, Sequence
-import feedparser, os, random, requests, threading, time
-from flask import Flask, send_from_directory
-import html, time as pytime
+import os, random, threading, time, html, time as pytime
 
-# === CONFIG ===
+import requests
+import feedparser
+from flask import Flask, send_from_directory
+
+# ================== CONFIG ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+
 START_HOUR = int(os.getenv("START_HOUR", "7"))
 END_HOUR = int(os.getenv("END_HOUR", "22"))
 
-# URL diretto dell’immagine sponsor (usa link diretto a file .png, non a pagina)
+# immagine sponsor: deve essere un .png/.jpg diretto
 SHUBUKAN_IMAGE_URL = os.getenv(
     "SHUBUKAN_IMAGE_URL",
     "https://raw.githubusercontent.com/openai-examples/assets/main/shubukan_orari.png"
 )
 
-UA_HEADERS = {"User-Agent": "TouchBot v5.4 (KitsuneLabs/Touch)"}
+UA_HEADERS = {"User-Agent": "TouchBot v5.5 (KitsuneLabs/Touch)"}
+
 app = Flask(__name__)
 
+# ================== STATE ==================
 sent_today_hours: set[str] = set()
 SENT_LINKS: set[str] = set()
 ALERT_SENT_IDS: set[str] = set()
 REPORT: list[dict[str, str]] = []
 
-# === SPONSOR: Shubukan Torino ===
+# ================== SPONSOR ==================
 ADS: Sequence[str] = [
-    "🥋 *Shubukan Torino — Kendo & Via della Presenza*\nAllenamenti a Torino e Carmagnola. Lezione di prova gratuita.\n_Allenati alla calma nel movimento. Cresci nella disciplina._",
-    "🌿 *Shubukan Torino — Educazione marziale gentile*\nUn dojo dove crescere in consapevolezza e presenza.\n_Non solo sport: una via di armonia._",
+    "🥋 Shubukan Torino — Kendo & Via della Presenza\nAllenamenti a Torino e Carmagnola. Lezione di prova gratuita.\nAllenati alla calma nel movimento.",
+    "🌿 Shubukan Torino — Educazione marziale gentile\nUn dojo dove crescere in consapevolezza e presenza.\nNon solo sport: una via di armonia.",
 ]
 
-def sponsor_banner() -> str:
+def sponsor_caption_html() -> str:
+    # HTML perché Telegram col link è più stabile
     return (
-        "🥋 *Shubukan Torino — Kendo & Via della Presenza*\n"
+        "<b>Shubukan Torino — Kendo &amp; Via della Presenza</b>\n"
         "Allenamenti a Torino e Carmagnola. Lezione di prova gratuita.\n"
-        "_Allenati alla calma nel movimento._\n"
-        "👉 [Visita il sito](https://www.shubukan.it)"
+        "<i>Allenati alla calma nel movimento.</i>\n"
+        '👉 <a href="https://www.shubukan.it">Visita il sito</a>'
     )
 
 def send_sponsor_photo() -> None:
-    """Invia la foto sponsor via URL (stabile e compatibile Telegram)."""
+    """Invia la foto sponsor. Se fallisce, logga ma non blocca l'articolo."""
+    if not BOT_TOKEN or not CHAT_ID:
+        log("⚠️ BOT_TOKEN o CHAT_ID non settati, salto sponsor.")
+        return
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
             data={
                 "chat_id": CHAT_ID,
                 "photo": SHUBUKAN_IMAGE_URL,
-                "caption": sponsor_banner(),
-                "parse_mode": "Markdown",
+                "caption": sponsor_caption_html(),
+                "parse_mode": "HTML",
             },
             timeout=15,
         )
@@ -58,12 +67,12 @@ def send_sponsor_photo() -> None:
     except Exception as e:
         log(f"⚠️ Errore rete foto sponsor: {e}")
 
-# === FEEDS ===
+# ================== FEEDS ==================
 FEEDS_TECH = [
     "https://www.ilpost.it/tecnologia/feed/",
     "https://www.tomshw.it/feed/",
     "https://www.dday.it/feed",
-    "https://www.hdblog.it/rss.xml",
+    "https://www.hdblog.it/rss.xml",   # a volte 404, ma lo teniamo
 ]
 
 FEEDS_FINANCE = [
@@ -77,7 +86,7 @@ FEEDS_GAMING = [
     "https://www.spaziogames.it/feed",
 ]
 
-# ✅ FEEDS CINEMA aggiornati (403-safe)
+# cinema “safe” per Render
 FEEDS_CINEMA = [
     "https://www.badtaste.it/feed/cinema/",
     "https://www.cinematographe.it/feed/",
@@ -96,9 +105,11 @@ ALERT_KEYWORDS = [
     "evacuazione", "blackout", "cyberattacco",
 ]
 
-# === UTILS ===
+# ================== UTILS ==================
 def log(msg: str) -> None:
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}".encode("utf-8", "ignore").decode("utf-8"))
+    # evita l’errore “surrogates not allowed”
+    safe = msg.encode("utf-8", "ignore").decode("utf-8")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {safe}")
 
 def hhmm() -> str:
     return datetime.now().strftime("%H:%M")
@@ -117,9 +128,15 @@ def matches_alert(entry) -> bool:
     return any(k in txt for k in ALERT_KEYWORDS)
 
 def clean_markdown(text: str) -> str:
-    return html.escape(text).replace("*", "").replace("_", "").replace("`", "")
+    # togliamo i caratteri che spaccano Telegram quando arrivano dai feed
+    text = html.escape(text)
+    text = text.replace("`", "").replace("_", "").replace("*", "")
+    return text
 
 def telegram_send(text: str) -> None:
+    if not BOT_TOKEN or not CHAT_ID:
+        log("⚠️ BOT_TOKEN o CHAT_ID non settati, skip telegram_send.")
+        return
     safe_text = clean_markdown(text)
     try:
         r = requests.post(
@@ -187,7 +204,9 @@ def send_article(feed_group: Sequence[str], brand_name: str) -> bool:
 
     msg = f"*{brand_name}*\n\n🧠 *{title}*\n{summary}\n🔗 {link}{comment}"
     telegram_send(msg)
+    # sponsor subito dopo la notizia
     send_sponsor_photo()
+
     if link:
         SENT_LINKS.add(link)
     add_report(brand_name, title, link)
@@ -209,7 +228,10 @@ def send_alerts() -> bool:
 
             title = getattr(e, "title", "Aggiornamento").strip()
             summary = getattr(e, "summary", "").strip()[:400]
-            msg = f"🚨 *ALLERTA IMPORTANTE* — fonte agenzia\n\n🗞️ *{title}*\n{summary}\n🔗 {link}"
+            msg = (
+                "🚨 *ALLERTA IMPORTANTE* — fonte agenzia\n\n"
+                f"🗞️ *{title}*\n{summary}\n🔗 {link}"
+            )
             telegram_send(msg)
             ALERT_SENT_IDS.add(link)
             add_report("ALERT", title, link)
@@ -228,31 +250,41 @@ def reset_daily() -> None:
 
 def hourly_brand_for(hour_idx: int) -> tuple[str, Sequence[str]]:
     group = ROTATION[hour_idx % len(ROTATION)]
-    if group is FEEDS_TECH: return ("🌅 Touch Tech — Morning Spark", FEEDS_TECH)
-    if group is FEEDS_FINANCE: return ("🍱 Touch Finance — Lunch Byte", FEEDS_FINANCE)
-    if group is FEEDS_GAMING: return ("⚡ Touch Gaming — Brain Snack", FEEDS_GAMING)
-    if group is FEEDS_CINEMA: return ("🌙 Touch Cinema — Insight", FEEDS_CINEMA)
+    if group is FEEDS_TECH:
+        return ("🌅 Touch Tech — Morning Spark", FEEDS_TECH)
+    if group is FEEDS_FINANCE:
+        return ("🍱 Touch Finance — Lunch Byte", FEEDS_FINANCE)
+    if group is FEEDS_GAMING:
+        return ("⚡ Touch Gaming — Brain Snack", FEEDS_GAMING)
+    if group is FEEDS_CINEMA:
+        return ("🌙 Touch Cinema — Insight", FEEDS_CINEMA)
     return ("📰 Touch Top News — Agenzie", FEEDS_AGENCIES)
 
-# === SCHEDULER ===
+# ================== SCHEDULER ==================
 def check_scheduler() -> None:
     now = datetime.now()
     h, m = now.hour, now.minute
     key = f"{h:02d}:00"
 
+    # reset a mezzanotte
     if now.strftime("%H:%M") == "00:00":
         reset_daily()
+
+    # allerte ogni 5 minuti
     if m % 5 == 0:
         log("🔎 Check allerte…")
         send_alerts()
+
+    # pubblicazione oraria
     if START_HOUR <= h <= END_HOUR and m == 0 and key not in sent_today_hours:
-        brand_name, feeds = hourly_brand_for(h - START_HOUR)
+        hour_idx = h - START_HOUR
+        brand_name, feeds = hourly_brand_for(hour_idx)
         telegram_send(f"🕐 Pubblicazione oraria: *{brand_name}*")
         send_article(feeds, brand_name)
         sent_today_hours.add(key)
 
 def background_loop() -> None:
-    log("🚀 Avvio TouchBot v5.4 — Smart Feeds + Alerts + Sponsor")
+    log("🚀 Avvio TouchBot v5.5 — Smart Feeds + Alerts + Sponsor")
     while True:
         try:
             check_scheduler()
@@ -260,13 +292,23 @@ def background_loop() -> None:
             log(f"⚠️ Scheduler error: {e}")
         time.sleep(60)
 
-# === ROUTES ===
+# ================== ROUTES ==================
 @app.route("/")
 def home() -> str:
-    return "TouchBot v5.4 — Smart Feeds + Alerts + Sponsor ✅"
+    return "TouchBot v5.5 — Smart Feeds + Alerts + Sponsor ✅"
+
+@app.route("/static/<path:filename>")
+def serve_static(filename: str):
+    return send_from_directory("static", filename)
 
 @app.route("/forza/<slot>")
 def forza(slot: str) -> str:
+    slot = slot.lower().strip()
+
+    if slot in ("alert", "alerts"):
+        sent = send_alerts()
+        return "🚨 Alert inviati." if sent else "✅ Nessuna allerta ora."
+
     mapping = {
         "tech": ("🌅 Touch Tech — Morning Spark", FEEDS_TECH),
         "finance": ("🍱 Touch Finance — Lunch Byte", FEEDS_FINANCE),
@@ -274,12 +316,19 @@ def forza(slot: str) -> str:
         "cinema": ("🌙 Touch Cinema — Insight", FEEDS_CINEMA),
         "agenzie": ("📰 Touch Top News — Agenzie", FEEDS_AGENCIES),
     }
-    if slot.lower() not in mapping:
-        return "❌ Slot non valido. Usa: tech, finance, gaming, cinema, agenzie"
-    brand_name, feeds = mapping[slot.lower()]
+
+    if slot not in mapping:
+        return "❌ Slot non valido. Usa: tech, finance, gaming, cinema, agenzie, alert"
+
+    brand_name, feeds = mapping[slot]
     telegram_send(f"⚡ Forzato: *{brand_name}*")
     ok = send_article(feeds, brand_name)
     return "✅ Inviato." if ok else "⚠️ Nessuna notizia trovata."
+
+@app.route("/forza/ads")
+def forza_ads() -> str:
+    send_sponsor_photo()
+    return "✅ Sponsor inviato."
 
 @app.route("/ping_telegram")
 def ping_telegram() -> str:
@@ -288,7 +337,6 @@ def ping_telegram() -> str:
 
 @app.route("/kick")
 def kick() -> str:
-    """Riavvia manualmente lo scheduler senza redeploy."""
     threading.Thread(target=background_loop, daemon=True).start()
     telegram_send("🔁 Scheduler riavviato manualmente.")
     return "✅ Scheduler riavviato."
@@ -297,7 +345,7 @@ def kick() -> str:
 def health() -> str:
     return "ok"
 
-# === AUTO-SCHEDULER FIX ===
+# ================== AUTO START (per Gunicorn) ==================
 def start_scheduler():
     t = threading.Thread(target=background_loop, daemon=True)
     t.start()
@@ -306,4 +354,6 @@ def start_scheduler():
 start_scheduler()
 
 if __name__ == "__main__":
+    # locale / debug
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
