@@ -33,8 +33,8 @@ REPORT: list[dict[str, str]] = []
 
 # ================== SPONSOR ==================
 ADS: Sequence[str] = [
-    "🥋 Shubukan Torino — Kendo & Via della Presenza\nAllenamenti a Torino e Carmagnola. Lezione di prova gratuita.\nAllenati alla calma nel movimento.",
-    "🌿 Shubukan Torino — Educazione marziale gentile\nUn dojo dove crescere in consapevolezza e presenza.\nNon solo sport: una via di armonia.",
+    "🥋 Shubukan Torino — Kendo Jodo & Naginata\nAllenamenti a Torino e Carmagnola. Lezione di prova gratuita.\nAllenati alla calma nel movimento.",
+    "🌿 Shubukan Torino — La via della spada\nUn dojo dove crescere in consapevolezza e entusiasmo.\nNon solo sport: una via di armonia.",
 ]
 
 def sponsor_caption_html() -> str:
