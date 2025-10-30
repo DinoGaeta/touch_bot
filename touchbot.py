@@ -1,23 +1,24 @@
-# === TOUCHBOT v5.3 — Fix Scheduler + UTF-8 + Safe Telegram Markdown ===
+# === TOUCHBOT v5.4 — AutoScheduler + Kick Command + Cinema Fix + Sponsor Fix ===
 from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Iterable, Sequence
 import feedparser, os, random, requests, threading, time
 from flask import Flask, send_from_directory
-import html
-
-import time as pytime
+import html, time as pytime
 
 # === CONFIG ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 START_HOUR = int(os.getenv("START_HOUR", "7"))
 END_HOUR = int(os.getenv("END_HOUR", "22"))
+
+# URL diretto dell’immagine sponsor (usa link diretto a file .png, non a pagina)
 SHUBUKAN_IMAGE_URL = os.getenv(
-    "SHUBUKAN_IMAGE_URL", "https://touch-worker-8ke3.onrender.com/static/shubukan_orari.png"
+    "SHUBUKAN_IMAGE_URL",
+    "https://raw.githubusercontent.com/openai-examples/assets/main/shubukan_orari.png"
 )
 
-UA_HEADERS = {"User-Agent": "TouchBot v5.3 (KitsuneLabs/Touch)"}
+UA_HEADERS = {"User-Agent": "TouchBot v5.4 (KitsuneLabs/Touch)"}
 app = Flask(__name__)
 
 sent_today_hours: set[str] = set()
@@ -35,7 +36,7 @@ def sponsor_banner() -> str:
     return random.choice(ADS)
 
 def send_sponsor_photo() -> None:
-    """Invia la foto sponsor via URL (modo stabile)"""
+    """Invia la foto sponsor via URL (stabile e compatibile Telegram)."""
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
@@ -71,9 +72,10 @@ FEEDS_GAMING = [
     "https://www.spaziogames.it/feed",
 ]
 
+# ✅ FEEDS CINEMA aggiornati (403-safe)
 FEEDS_CINEMA = [
-    "https://www.comingsoon.it/rss/news.xml",
-    "https://www.cineblog.it/rss",
+    "https://www.badtaste.it/feed/cinema/",
+    "https://www.cinematographe.it/feed/",
 ]
 
 FEEDS_AGENCIES = [
@@ -110,7 +112,6 @@ def matches_alert(entry) -> bool:
     return any(k in txt for k in ALERT_KEYWORDS)
 
 def clean_markdown(text: str) -> str:
-    """Evita errori Telegram con markdown non chiuso"""
     return html.escape(text).replace("*", "").replace("_", "").replace("`", "")
 
 def telegram_send(text: str) -> None:
@@ -246,7 +247,7 @@ def check_scheduler() -> None:
         sent_today_hours.add(key)
 
 def background_loop() -> None:
-    log("🚀 Avvio TouchBot v5.3 — Smart Feeds + Alerts + Sponsor")
+    log("🚀 Avvio TouchBot v5.4 — Smart Feeds + Alerts + Sponsor")
     while True:
         try:
             check_scheduler()
@@ -257,7 +258,7 @@ def background_loop() -> None:
 # === ROUTES ===
 @app.route("/")
 def home() -> str:
-    return "TouchBot v5.3 — Smart Feeds + Alerts + Sponsor ✅"
+    return "TouchBot v5.4 — Smart Feeds + Alerts + Sponsor ✅"
 
 @app.route("/forza/<slot>")
 def forza(slot: str) -> str:
@@ -280,17 +281,24 @@ def ping_telegram() -> str:
     telegram_send("👋 TouchBot attivo e funzionante.")
     return "ok"
 
+@app.route("/kick")
+def kick() -> str:
+    """Riavvia manualmente lo scheduler senza redeploy."""
+    threading.Thread(target=background_loop, daemon=True).start()
+    telegram_send("🔁 Scheduler riavviato manualmente.")
+    return "✅ Scheduler riavviato."
+
 @app.route("/health")
 def health() -> str:
     return "ok"
 
-# === AUTO-SCHEDULER FIX (compatibile Gunicorn) ===
+# === AUTO-SCHEDULER FIX ===
 def start_scheduler():
     t = threading.Thread(target=background_loop, daemon=True)
     t.start()
     log("🧭 Scheduler avviato (compatibile Gunicorn).")
 
-start_scheduler()  # <— AVVIO AUTOMATICO ANCHE CON GUNICORN
+start_scheduler()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
