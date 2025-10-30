@@ -33,7 +33,12 @@ ADS: Sequence[str] = [
 ]
 
 def sponsor_banner() -> str:
-    return random.choice(ADS)
+    return (
+        "🥋 *Shubukan Torino — Kendo & Via della Presenza*\n"
+        "Allenamenti a Torino e Carmagnola. Lezione di prova gratuita.\n"
+        "_Allenati alla calma nel movimento._\n"
+        "👉 [Visita il sito](https://www.shubukan.it)"
+    )
 
 def send_sponsor_photo() -> None:
     """Invia la foto sponsor via URL (stabile e compatibile Telegram)."""
