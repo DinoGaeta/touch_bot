@@ -40,7 +40,7 @@ ADS: Sequence[str] = [
 def sponsor_caption_html() -> str:
     # HTML perché Telegram col link è più stabile
     return (
-        "<b>Shubukan Torino — Kendo &amp; Via della Presenza</b>\n"
+        "<b>Shubukan Torino — Kendo Jodo Iaido Naginata</b>\n"
         "Allenamenti a Torino e Carmagnola. Lezione di prova gratuita.\n"
         "<i>Allenati alla calma nel movimento.</i>\n"
         '👉 <a href="https://www.shubukan.it">Visita il sito</a>'
